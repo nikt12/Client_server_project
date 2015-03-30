@@ -1,7 +1,8 @@
 #ifndef PROTOCOL_H_
 #define PROTOCOL_H_
 
-#define MTU 15					//максимальный размер передаваемых данных
+#define MTU 1500					//максимальный размер передаваемых данных
+#define TIMEOUT 20		//тайм-аут
 
 #define PROTO_NAME "VDM_test"	//имя протокола
 #define PROTO_VER "0.1"			//версия прокола
@@ -20,22 +21,26 @@ const char ackMessage[] = "ACK";					//формат сообщения-подт�
 const char firstService[] = "A";	//имя первого сервиса
 const char secondService[] = "B";	//имя второго сервиса
 
-//структура, описывающая сообщение и его параметры
-typedef struct {
-	char msgCRC32[CRC32SIZE];			//контрольная сумма
-	char msgText[MSGSIZE];				//текст сообщения
-	char msgLength[6];					//длина сообщения
-} message;
+const char firstSrvResponse[] = " (response from service A)";
+const char secondSrvResponse[] = " (response from service B)";
+
+char srvErrMessage[] = "Вы запросили несуществующий сервис.";
 
 //структура, описывающее соединение и его параметры
 typedef struct {
 	char protoName[10];					//имя протокола
 	char protoVersion[5];				//версия протокола
+	char length[5];						//длина сообщения
 	int clientSockFD;					//файловый дескриптор клиентского сокета
 	char clientHostName[17];			//хостнейм клиента
 	char clientNickName[NICK_SIZE];		//ник пользователя
 	char serviceName[SERVICE_SIZE];		//имя сервиса
-	message msg;						//сообщение и его параметры
+	char messageText[MSGSIZE];			//текст сообщения
+	char messageCRC32[CRC32SIZE];		//контрольная сумма
+	int timeout;						//тайм-аут
+	short firstMsgFlag;
+	char storageBuffer[BUFFERSIZE];
+	short segmentationFlag;
 } connection;
 
 

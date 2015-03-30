@@ -19,131 +19,124 @@ extern errno;
 int connectSocket(const char *address, const char *port, const char *transport);
 
 //прототип функции конвертирования данных структуры в строку для пересылки по сети
-int Serializer(connection *connection, char *buffer);
+void Serializer(connection *connection, char *buffer);
 
 //прототип функции сегментирования строк, превышающих по длине размер MTU
-int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr);
+int Divider(int sockFD, char *buffer);
 
 //прототип функции установки блокирующего/неблокирующего режима работы с файловым дескриптором
 int fd_set_blocking(int fd, int blocking);
 
 int main(int argc, char *argv[]) {
-	int sockFD;								//файловый дескриптор сокета клиента
+	int sockFD;												//файловый дескриптор сокета клиента
 
-	connection conn;//структура, описывающая данные клиента и параметры соединения
+	connection conn;										//структура, описывающая данные клиента и параметры соединения
 
-	struct sockaddr_in serverAddr;	//структура, содержащая информацию об адресе
+	char exitpr[] = "exitpr";								//строковая константа, по которой осуществляется выход из программы
+	char errMessage[] = "No more place for new clients.";	//сообщение, получаемое от сервера в случае, если на нем нет свободного места
 
-	char exitpr[] = "exitpr";//строковая константа, по которой осуществляется выход из программы
-	char errMessage[] = "No more place for new clients.";//сообщение, получаемое от сервера в случае, если на нем нет свободного места
-
-	char buffer[BUFFERSIZE];			//буфер, принимающий ответ от сервера
-	char tempBuffer[MSGSIZE];				//временный буфер для различных нужд
+    char buffer[BUFFERSIZE];								//буфер, принимающий ответ от сервера
+    char tempBuffer[MSGSIZE];								//временный буфер для различных нужд
+    char buffer1[BUFFERSIZE];
 
 	//инициализируем используемые строки и структуры нулями
 	memset(&conn, 0, sizeof(conn));
 	memset(&buffer, 0, sizeof(buffer));
 	memset(&tempBuffer, 0, sizeof(tempBuffer));
-	memset(&serverAddr, 0, sizeof(serverAddr));
+	memset(&buffer1, 0, sizeof(buffer1));
 
-	//проверяем, получено ли необходимое количество аргументов
-	if (argc == 4) {
-		//вызываем функцию создания сокета и подключения к хосту
-		sockFD = connectSocket(argv[1], argv[2], argv[3]);
-		//проверяем результат
-		if (sockFD < 0) {
-			printf("Ошибка подключения к %s:%s!\n", argv[1], argv[2]);
-			return 0;
-		} else
-			printf("Вы подключены к %s:%s!\n\n", argv[1], argv[2]);
+    //проверяем, получено ли необходимое количество аргументов
+    if (argc == 4) {
+        //вызываем функцию создания сокета и подключения к хосту
+    	sockFD = connectSocket(argv[1], argv[2], argv[3]);
+    	//проверяем результат
+        if(sockFD < 0) {
+        	printf("Ошибка подключения к %s:%s!\n", argv[1], argv[2]);
+        	return 0;
+        }
+        else
+        	printf("Вы подключены к %s:%s!\n\n", argv[1], argv[2]);
 
-		serverAddr.sin_family = AF_INET;
-		serverAddr.sin_port = htons(atoi(argv[2]));
-		inet_pton(AF_INET, argv[1], &serverAddr.sin_addr);
+        //цикл получения никнейма и имени сервиса
+        while(1) {
+        	//создаем и обнуляем временный буфер
+        	char cutBuffer[MSGSIZE];
+        	memset(&cutBuffer, 0, sizeof(cutBuffer));
 
-		//цикл получения никнейма и имени сервиса
-		while (1) {
-			//создаем и обнуляем временный буфер
-			char cutBuffer[MSGSIZE];
-			memset(&cutBuffer, 0, sizeof(cutBuffer));
-
-			printf("Введите Ваш ник (от 4 до 15 символов, без пробелов): ");
-			fgets(tempBuffer, sizeof(tempBuffer), stdin);
-			//избавляемся от \n, который fgets помещает в конец строки
-			strncpy(cutBuffer, tempBuffer, strlen(tempBuffer) - 1);
-			memset(&tempBuffer, 0, sizeof(tempBuffer));
-			//ник не должен быть короче 4 и длиннее 15 символов
-			if ((strlen(cutBuffer) >= 4) && (strlen(cutBuffer) <= 15)) {
-				//сохраняем ник
-				strncpy(conn.clientNickName, cutBuffer, strlen(cutBuffer));
+        	printf("Введите Ваш ник (от 4 до 15 символов): ");
+        	fgets(tempBuffer, sizeof(tempBuffer), stdin);
+        	//избавляемся от \n, который fgets помещает в конец строки
+        	strncpy(cutBuffer, tempBuffer, strlen(tempBuffer)-1);
+        	memset(&tempBuffer, 0, sizeof(tempBuffer));
+        	//ник не должен быть короче 4 и длиннее 15 символов
+        	if((strlen(cutBuffer) >= 4) && (strlen(cutBuffer) <=15)) {
+        		//сохраняем ник
+        		strncpy(conn.clientNickName, cutBuffer, strlen(cutBuffer));
+        		memset(&cutBuffer, 0, sizeof(cutBuffer));
+				printf("Введите имя сервиса: ");
+				fgets(tempBuffer, sizeof(tempBuffer), stdin);
+				//избавляемся от \n, который fgets помещает в конец строки
+				strncpy(cutBuffer, tempBuffer, strlen(tempBuffer)-1);
+				memset(&tempBuffer, 0, sizeof(tempBuffer));
+				//сохраняем имя сервиса
+				strncpy(conn.serviceName, cutBuffer, strlen(cutBuffer));
 				memset(&cutBuffer, 0, sizeof(cutBuffer));
-				while (1) {
-					printf("Введите имя сервиса (%s или %s): ", firstService,
-							secondService);
-					fgets(tempBuffer, sizeof(tempBuffer), stdin);
-					//избавляемся от \n, который fgets помещает в конец строки
-					strncpy(cutBuffer, tempBuffer, strlen(tempBuffer) - 1);
-					memset(&tempBuffer, 0, sizeof(tempBuffer));
-					//убеждаемся, что клиент запросил один из двух доступных сервисов
-					if ((strncmp(cutBuffer, firstService, strlen(firstService))
-							== 0)
-							|| (strncmp(cutBuffer, secondService,
-									strlen(secondService)) == 0)) {
-						//сохраняем имя сервиса
-						strncpy(conn.serviceName, cutBuffer, strlen(cutBuffer));
-						memset(&cutBuffer, 0, sizeof(cutBuffer));
-						break;
-					}
-					memset(&cutBuffer, 0, sizeof(cutBuffer));
-				}
 				break;
-			}
-			memset(&cutBuffer, 0, sizeof(cutBuffer));
-		}
+        	}
+        	memset(&cutBuffer, 0, sizeof(cutBuffer));
+        }
 
-		//цикл обмена данных с сервером
-		while (1) {
-			int n;
-			printf("Введите текст сообщения: ");
-			memset(&tempBuffer, 0, sizeof(tempBuffer));
-			fgets(tempBuffer, sizeof(tempBuffer), stdin);
-			//избавляемся от \n, который fgets помещает в конец строки
-			strncpy(conn.msg.msgText, tempBuffer, strlen(tempBuffer) - 1);
-			//проверяем, не ввел ли клиент команду завершения программы
-			if (strcmp(conn.msg.msgText, exitpr) == 0) {
-				printf("Клиент закрывается.\n\n");
-				break;
-			}
+        //цикл обмена данных с сервером
+        while(1) {
+    		int n;
+    		printf("Введите текст сообщения: ");
+    		memset(&tempBuffer, 0, sizeof(tempBuffer));
+    		fgets(tempBuffer, sizeof(tempBuffer), stdin);
+    		//избавляемся от \n, который fgets помещает в конец строки
+    		strncpy(conn.messageText, tempBuffer, strlen(tempBuffer)-1);
+    		//проверяем, не ввел ли клиент команду завершения программы
+    		if (strcmp(conn.messageText, exitpr) == 0) {
+    			printf("Клиент закрывается.\n\n");
+    			break;
+    		}
 
-			strcpy(conn.protoName, PROTO_NAME);	//сохраняем имя нашего протокола
-			strcpy(conn.protoVersion, PROTO_VER);//сохраняем версию нашего протокола
-			//сохраняем контрольную сумму сообщения
-			sprintf(conn.msg.msgCRC32, "%X",
-					(unsigned int) crcSlow((unsigned char *) conn.msg.msgText,
-							strlen(conn.msg.msgText)));
+    		strcpy(conn.protoName, PROTO_NAME);		//сохраняем имя нашего протокола
+    		strcpy(conn.protoVersion, PROTO_VER);	//сохраняем версию нашего протокола
 
-			Serializer(&conn, buffer);	//преобразуем структуру в единую строку
+			Serializer(&conn, buffer);				//преобразуем структуру в единую строку
 
 			//проверяем, превышает ли длина получившейся строки размер MTU
-			if ((strcmp(argv[3], "udp") == 0) && (strlen(buffer) > (int) MTU)) {
+			int size = (int)strlen(buffer);
+			if(size > (int)MTU) {
 				//вызов функции сегментирования строки с проверкой результата
-				if (Divider(sockFD, buffer, serverAddr) > 0)
-					printf("Серверу отправлено: %s\n", conn.msg.msgText);
-				memset(&buffer, 0, sizeof(buffer));
-			} else {
+        		if(Divider(sockFD, buffer) > 0)
+        			printf("Серверу отправлено: %s\n", conn.messageText);
+        		memset(&buffer, 0, sizeof(buffer));
+			}
+			else {
 				//отправляем данные серверу и проверяем результат
-				if (strcmp(argv[3], "tcp") == 0)
-					n = write(sockFD, buffer, strlen(buffer));
-				else
-					n = sendto(sockFD, buffer, strlen(buffer), 0,
-							(struct sockaddr *) &serverAddr,
-							sizeof(serverAddr));
-				if (n < 0)
-					printf("Ошибка при записи данных в сокет: %s.\n",
-							strerror(errno));
-				else
-					printf("Серверу отправлено: %s\n", conn.msg.msgText);
-				memset(&buffer, 0, sizeof(buffer));
+
+				strncpy(buffer1, buffer, 20);
+				n = write(sockFD, buffer1, strlen(buffer1));
+				memset(&buffer1, 0, sizeof(buffer1));
+				int i, j;
+				for(i = 20, j = 0; i < 30; i++, j++)
+					buffer1[j]=buffer[i];
+				sleep(5);
+				n = write(sockFD, buffer1, strlen(buffer1));
+				memset(&buffer1, 0, sizeof(buffer1));
+				for(i = 30, j = 0; i < strlen(buffer); i++, j++)
+					buffer1[j]=buffer[i];
+				sleep(5);
+				n = write(sockFD, buffer1, strlen(buffer1));
+				memset(&buffer1, 0, sizeof(buffer1));
+
+				//n = write(sockFD, buffer, strlen(buffer));
+        		if (n < 0)
+        			 printf("Ошибка при записи данных в сокет: %s.\n", strerror(errno));
+        		else
+        			printf("Серверу отправлено: %s\n", conn.messageText);
+        		memset(&buffer, 0, sizeof(buffer));
 			}
 
 			//к этому моменту на стороне сервера наш сокет уже сделан неблокирующим, и, чтобы дождаться ответа
@@ -151,14 +144,9 @@ int main(int argc, char *argv[]) {
 			fd_set_blocking(sockFD, 1);
 
 			//чтение данных из сокета с проверкой результата
-			if (strcmp(argv[3], "tcp") == 0)
-				n = read(sockFD, buffer, sizeof(buffer));
-			else
-				n = recvfrom(sockFD, buffer, sizeof(buffer), 0,
-						(struct sockaddr *) &serverAddr, sizeof(serverAddr));
+			n = read(sockFD, buffer, sizeof(buffer));
 			if (n < 0)
-				printf("Ошибка при чтении данных из сокета: %s.\n",
-						strerror(errno));
+				printf("Ошибка при чтении данных из сокета: %s.\n", strerror(errno));
 			else
 				printf("Ответ сервера: %s\n\n", buffer);
 
@@ -166,21 +154,26 @@ int main(int argc, char *argv[]) {
 			fd_set_blocking(sockFD, 0);
 
 			//проверяем, не прислал ли нам сервер сигнал о том, что на нем нет места для подключения
-			if (strncmp(errMessage, buffer, strlen(buffer)) == 0) {
-				printf("Клиент закрывается.\n\n");
-				break;
-			}
-			//обнуляем только ту часть структуры, которая содержит данные сообщения
-			memset(&conn.msg, 0, sizeof(conn.msg));
-			memset(&buffer, 0, sizeof(buffer));
-		}
-		// закрываем файловый дескриптор сокета
-		close(sockFD);
-	} else
-		//если введено неверное количество аргументов, выводим правильный формат запуска программы
-		printf("Использование: %s address port transport\n", argv[0]);
+    		if(strncmp(errMessage, buffer, strlen(buffer)+1) == 0) {
+    			printf("Клиент закрывается.\n\n");
+    			break;
+    		}
 
-	return 0;
+    		if(strcmp(srvErrMessage, buffer) == 0)
+    			break;
+
+    		//обнуляем только ту часть структуры, которая содержит данные сообщения
+    		memset(&conn.messageText, 0, sizeof(conn.messageText));
+    		memset(&buffer, 0, sizeof(buffer));
+    	}
+        // закрываем файловый дескриптор сокета
+    	close(sockFD);
+    }
+    else
+    	//если введено неверное количество аргументов, выводим правильный формат запуска программы
+    	printf("Использование: %s address port transport\n", argv[0]);
+
+    return 0;
 }
 
 //реализация функции создания сокета и подключения к хосту
@@ -189,95 +182,90 @@ int main(int argc, char *argv[]) {
 //port - порт хоста
 //transport - имя транспортного протокола
 int connectSocket(const char *address, const char *port, const char *transport) {
-	int sockFD;
-	int portNum;						//номер порта в целочисленном формате
-	int type, proto;						//тип транспортного протокола
-	struct sockaddr_in sockAddr;
+	int sockFD;								//файловый дескриптор сокета
+	int portNum;							//номер порта в целочисленном формате
+	int type;								//тип транспортного протокола
 
-	memset(&sockAddr, 0, sizeof(sockAddr));
+	struct sockaddr_in serverAddr;			//структура, содержащая информацию об адресе
+
+	memset(&serverAddr, 0, sizeof(serverAddr));
 
 	//используем имя протокола для определения типа сокета
-	if (strcmp(transport, "udp") == 0) {
+	if(strcmp(transport, "udp") == 0)
 		type = SOCK_DGRAM;					//UDP
-		proto = IPPROTO_UDP;
-	} else if (strcmp(transport, "tcp") == 0) {
+	else if(strcmp(transport, "tcp") == 0)
 		type = SOCK_STREAM;					//TCP
-		proto = IPPROTO_TCP;
-	} else {
+	else {
 		printf("Некооректно указан транспортный протокол.\n");
 		return -1;
 	}
 
 	//вызываем функцию создания сокета с проверкой результата
-	sockFD = socket(PF_INET, type, proto);
+	sockFD = socket(PF_INET, type, 0);
 	if (sockFD < 0) {
 		printf("Ошибка создания сокета: %s.\n", strerror(errno));
 		return -1;
 	}
 
-	portNum = atoi(port);//преобразовываем номер порта из строкового формата в целочисленный
-	sockAddr.sin_port = htons(portNum);	//конвертируем номер порта из пользовательского порядка байт в сетевой
-	sockAddr.sin_family = AF_INET;		//указываем тип адреса
+	portNum = atoi(port);					//преобразовываем номер порта из строкового формата в целочисленный
+	serverAddr.sin_port = htons(portNum);	//конвертируем номер порта из пользовательского порядка байт в сетевой
+	serverAddr.sin_family = AF_INET;		//указываем тип адреса
 
 	//конвертируем адрес в бинарный формат
-	inet_pton(AF_INET, address, &sockAddr.sin_addr);
+	inet_pton(AF_INET, address, &serverAddr.sin_addr);
 
-	if (type == SOCK_STREAM)
-		//вызываем функцию подключения к хосту с проверкой результата
-		if (connect(sockFD, (struct sockaddr *) &sockAddr, sizeof(sockAddr))
-				< 0) {
-			printf("Ошибка подключения к %s: %s (%s)!\n", address, port,
-					strerror(errno));
-			return -1;
-		}
+	//вызываем функцию подключения к хосту с проверкой результата
+	if(connect(sockFD, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) < 0) {
+		printf("Ошибка подключения к %s: %s (%s)!\n", address, port, strerror(errno));
+		return -1;
+	}
 
-	return sockFD;
+	return sockFD;							//возвращаем файловый дескриптор созданного сокета
 }
 
 //реализация функции конвертирования данных структуры в строку для пересылки по сети
 //аргументы:
 //connection - структура данных о клиенте и параметрах соединения
 //buffer - строка, в которую будет помещен результат
-int Serializer(connection *connection, char *buffer) {
-	strcat(buffer, "?");			//добавляем в буфер признак начала сообщения
+void Serializer(connection *connection, char *buffer) {
+	char tempString[BUFFERSIZE];
+	char messageLength[5];
+	memset(&tempString, 0, sizeof(tempString));
+	memset(&messageLength, 0, sizeof(messageLength));
+
 	strcat(buffer, connection->protoName);
-	strcat(buffer, "|");//здесь и далее "|" используется для разделения полей структуры
+	strcat(buffer, "|");
 	strcat(buffer, connection->protoVersion);
 	strcat(buffer, "|");
-	strcat(buffer, connection->msg.msgCRC32);
+	strcat(tempString, connection->clientNickName);
+	strcat(tempString, "|");
+	strcat(tempString, connection->serviceName);
+	strcat(tempString, "|");
+	strcat(tempString, connection->messageText);
+	strcat(tempString, "|");
+	sprintf(messageLength, "%d", (int)(strlen(buffer) + strlen(tempString) + 8 + 1));
+	sprintf(connection->length, "%d", (int)(atoi(messageLength) + strlen(messageLength)));
+	strcat(buffer, connection->length);
 	strcat(buffer, "|");
-	strcat(buffer, connection->msg.msgText);
-	strcat(buffer, "|");
-	sprintf(connection->msg.msgLength, "%d",
-			(int) strlen(connection->msg.msgText));
-	strcat(buffer, connection->msg.msgLength);
-	strcat(buffer, "|");
-	strcat(buffer, connection->clientNickName);
-	strcat(buffer, "|");
-	strcat(buffer, connection->serviceName);
-	strcat(buffer, "!");			//добавляем в буфер признак конца сообщения
-	//проверяем корректность созданной строки
-	if ((buffer[0] == 63) && (buffer[strlen(buffer)] == 33))
-		return 0;
-	else
-		return -1;
+	strcat(buffer, tempString);
+	sprintf(connection->messageCRC32, "%X", (unsigned int)crcSlow((unsigned char *)buffer, strlen(buffer)));
+	strcat(buffer, connection->messageCRC32);
 }
 
 //реализация функции сегментирования строки
 //аргументы:
 //sockFD - файловый дескриптор сокета
 //buffer - исходная строка
-int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr) {
-	int segNum;				//число сегментов, на которые будет поделена строка
+int Divider(int sockFD, char *buffer) {
+	int segNum;								//число сегментов, на которые будет поделена строка
 	int i, j, k;							//счетчики циклов
 	int done = 0;							//счетчик отправленных сегментов
-	int res;
 
-	char synMessage[25];//сообщение, предупреждающее сервер о том, что будет отправлена последовательность сегментов
+	char synMessage[25];					//сообщение, предупреждающее сервер о том, что будет отправлена последовательность сегментов
 	char strSegNum[5];						//число сегментов в формате строки
 	char tempBuffer[5];						//временный буфер
 
-	char segArray[NUM_OF_SEGMENTS][MTU + 1];//массив строк-сегментов исходной строки
+	char segArray[NUM_OF_SEGMENTS][MTU+1];	//массив строк-сегментов исходной строки
 
 	//инициализируем нулями используемые строки и массив строк
 	memset(&synMessage, 0, sizeof(synMessage));
@@ -285,8 +273,9 @@ int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr) {
 	memset(&tempBuffer, 0, sizeof(tempBuffer));
 	memset(&segArray, 0, sizeof(segArray));
 
+
 	//проверяем, во сколько раз строка больше, чем MTU
-	if ((strlen(buffer) % MTU) == 0)
+	if((strlen(buffer) % MTU) == 0)
 		segNum = strlen(buffer) / MTU;
 	else
 		segNum = strlen(buffer) / MTU + 1;
@@ -300,28 +289,21 @@ int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr) {
 	fd_set_blocking(sockFD, 1);
 
 	//отправляем предупреждающее сообщение
-	res = sendto(sockFD, synMessage, strlen(synMessage), 0,
-			(struct sockaddr *) &serverAddr, sizeof(serverAddr));
+	write(sockFD, synMessage, strlen(synMessage));
 
 	//ждем подтверждения от сервера
-	if ((recvfrom(sockFD, tempBuffer, sizeof(tempBuffer), 0,
-			(struct sockaddr *) &serverAddr, sizeof(serverAddr)) > 0)
-			&& (strncmp(tempBuffer, ackMessage, strlen(ackMessage)) == 0)) {
+	if((read(sockFD, tempBuffer, sizeof(tempBuffer)) > 0) && (strncmp(tempBuffer, ackMessage, strlen(ackMessage)) == 0)) {
 		memset(&tempBuffer, 0, sizeof(tempBuffer));
 		//цикл сегментирования исходной строки
-		for (j = 0; j < segNum; j++)
-			for (i = (j * strlen(buffer)) / segNum, k = 0;
-					i < ((j + 1) * strlen(buffer)) / segNum; i++, k++)
+		for(j = 0; j < segNum; j++)
+			for(i = (j*strlen(buffer))/segNum, k = 0; i < ((j+1)*strlen(buffer))/segNum; i++, k++)
 				segArray[j][k] = buffer[i];
 		//цикл обмена данными с сервером
-		for (j = 0; j < segNum; j++) {
+		for(j = 0; j < segNum; j++) {
 			//отправляем очередной сегмент
-			sendto(sockFD, segArray[j], strlen(segArray[j]), 0,
-					(struct sockaddr *) &serverAddr, sizeof(serverAddr));
+			write(sockFD, segArray[j], strlen(segArray[j]));
 			//ждем подтверждения
-			if ((recvfrom(sockFD, tempBuffer, sizeof(tempBuffer), 0,
-					(struct sockaddr *) &serverAddr, sizeof(serverAddr)) > 0)
-					&& (strncmp(tempBuffer, ackMessage, strlen(ackMessage)) == 0)) {
+			if((read(sockFD, tempBuffer, sizeof(tempBuffer)) > 0) && (strncmp(tempBuffer, ackMessage, strlen(ackMessage)) == 0)) {
 				memset(&tempBuffer, 0, sizeof(tempBuffer));
 				//инкрементируем счетчик отправленных сегментов в случае успеха
 				done++;
@@ -335,7 +317,7 @@ int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr) {
 	memset(&buffer, 0, sizeof(buffer));
 
 	//в случае, если счетчик отправленных сегментов равен предварительно рассчитанному числу сегментов, возвращаем число сегментов
-	if (done == segNum)
+	if(done == segNum)
 		return segNum;
 	else
 		return -1;
@@ -346,15 +328,15 @@ int Divider(int sockFD, char *buffer, struct sockaddr_in serverAddr) {
 //fd - файловый дескриптор сокета
 //blocking - режим работы (0 - неблокирующий, 1 - блокирующий)
 int fd_set_blocking(int fd, int blocking) {
-	//сохраняем текущие флаги
-	int flags = fcntl(fd, F_GETFL, 0);
-	if (flags == -1)
-		return 0;
+    //сохраняем текущие флаги
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1)
+        return 0;
 
-	//устанавливаем режим работы
-	if (blocking)
-		flags &= ~O_NONBLOCK;
-	else
-		flags |= O_NONBLOCK;
-	return fcntl(fd, F_SETFL, flags) != -1;
+    //устанавливаем режим работы
+    if (blocking)
+        flags &= ~O_NONBLOCK;
+    else
+        flags |= O_NONBLOCK;
+    return fcntl(fd, F_SETFL, flags) != -1;
 }
